@@ -1,148 +1,178 @@
-import os
-import re
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 import numpy as np
+import re
+import os
 
-# ==========================
-# Ukuran template
-# ==========================
+
+# ukuran template
 WIDTH = 300
 HEIGHT = 200
 
-OUTPUT_FOLDER = "output"
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+OUTPUT = "output"
+os.makedirs(OUTPUT, exist_ok=True)
 
 
-# ==========================
-# Parser kode
-# ==========================
+
 def parse_code(code):
+    """
+    AR50      -> bottom=50 top=0
+    AR50R30   -> bottom=50 top=30
+    """
 
-    result = {
-        "bottom_radius": 0,
-        "top_radius": 0
-    }
+    r = re.findall(r"R(\d+)", code)
 
-    if code.startswith("A"):
+    bottom = int(r[0]) if len(r) >= 1 else 0
+    top = int(r[1]) if len(r) >= 2 else 0
 
-        radius = re.findall(r"R(\d+)", code)
-
-        if len(radius) >= 1:
-            result["bottom_radius"] = int(radius[0])
-
-        if len(radius) >= 2:
-            result["top_radius"] = int(radius[1])
-
-    return result
+    return bottom, top
 
 
-# ==========================
-# Menggambar bentuk
-# ==========================
-def draw_shape(info, filename):
 
-    rb = info["bottom_radius"]
-    rt = info["top_radius"]
+def create_shape(bottom_r, top_r):
 
-    verts = []
-    codes = []
+    points = []
+    commands = []
 
-    # mulai dari bawah kiri
-    if rb > 0:
-        start_x = rb
-    else:
-        start_x = 0
 
-    verts.append((start_x, 0))
-    codes.append(Path.MOVETO)
+    # mulai dari bawah kiri setelah radius
+    points.append((bottom_r, 0))
+    commands.append(Path.MOVETO)
 
-    # bawah kanan
-    verts.append((WIDTH, 0))
-    codes.append(Path.LINETO)
 
-    # kanan atas
-    verts.append((WIDTH, HEIGHT))
-    codes.append(Path.LINETO)
+    # bawah
+    points.append((WIDTH,0))
+    commands.append(Path.LINETO)
 
-    # kiri atas
-    if rt > 0:
-        verts.append((0, HEIGHT))
-        codes.append(Path.LINETO)
 
-        theta = np.linspace(np.pi/2, 0, 20)
+    # kanan
+    points.append((WIDTH,HEIGHT))
+    commands.append(Path.LINETO)
 
-        for t in theta:
-            x = rt * np.cos(t)
-            y = HEIGHT - rt + rt*np.sin(t)
-            verts.append((x, y))
-            codes.append(Path.LINETO)
 
-    else:
-        verts.append((0, HEIGHT))
-        codes.append(Path.LINETO)
+    # atas menuju radius atas
+    if top_r > 0:
 
-    # kiri bawah
-    if rb > 0:
+        points.append((top_r,HEIGHT))
+        commands.append(Path.LINETO)
 
-        verts.append((0, rb))
-        codes.append(Path.LINETO)
+        # arc kiri atas (cekung)
+        cx = top_r
+        cy = HEIGHT-top_r
 
-        theta = np.linspace(np.pi, 1.5*np.pi, 20)
+        for angle in np.linspace(90,180,30):
 
-        for t in theta:
-            x = rb + rb*np.cos(t)
-            y = rb + rb*np.sin(t)
-            verts.append((x, y))
-            codes.append(Path.LINETO)
+            x = cx + top_r*np.cos(np.radians(angle))
+            y = cy + top_r*np.sin(np.radians(angle))
+
+            points.append((x,y))
+            commands.append(Path.LINETO)
 
     else:
 
-        verts.append((0,0))
-        codes.append(Path.LINETO)
+        points.append((0,HEIGHT))
+        commands.append(Path.LINETO)
 
-    verts.append((start_x,0))
-    codes.append(Path.CLOSEPOLY)
 
-    fig, ax = plt.subplots(figsize=(6,4))
+
+    # turun sisi kiri
+    if top_r > 0:
+        start_y = HEIGHT-top_r
+    else:
+        start_y = HEIGHT
+
+
+    if bottom_r > 0:
+
+        points.append((0,bottom_r))
+        commands.append(Path.LINETO)
+
+
+        # arc kiri bawah (cekung)
+
+        cx = bottom_r
+        cy = bottom_r
+
+        for angle in np.linspace(180,270,30):
+
+            x = cx + bottom_r*np.cos(np.radians(angle))
+            y = cy + bottom_r*np.sin(np.radians(angle))
+
+            points.append((x,y))
+            commands.append(Path.LINETO)
+
+
+    else:
+
+        points.append((0,0))
+        commands.append(Path.LINETO)
+
+
+
+    points.append((bottom_r,0))
+    commands.append(Path.CLOSEPOLY)
+
+
+    return Path(points, commands)
+
+
+
+
+def draw(code):
+
+    bottom, top = parse_code(code)
+
+    path = create_shape(
+        bottom,
+        top
+    )
+
+
+    fig, ax = plt.subplots(
+        figsize=(6,4)
+    )
+
 
     patch = PathPatch(
-        Path(verts, codes),
+        path,
         facecolor="white",
         edgecolor="black",
         linewidth=2
     )
 
+
     ax.add_patch(patch)
 
-    ax.set_xlim(-10, WIDTH+10)
-    ax.set_ylim(-10, HEIGHT+10)
+
+    ax.set_xlim(-20,WIDTH+20)
+    ax.set_ylim(-20,HEIGHT+20)
 
     ax.set_aspect("equal")
     ax.axis("off")
 
-    plt.savefig(filename, dpi=200, bbox_inches="tight")
+
+    plt.savefig(
+        f"{OUTPUT}/{code}.png",
+        dpi=300,
+        bbox_inches="tight"
+    )
+
     plt.close()
 
 
-# ==========================
-# Main
-# ==========================
+
+# contoh banyak kode
 codes = [
     "AR50",
     "AR50R30",
-    "AR20",
-    "AR80R40"
+    "AR80",
+    "AR100R40"
 ]
 
-for code in codes:
 
-    info = parse_code(code)
+for c in codes:
+    draw(c)
 
-    draw_shape(
-        info,
-        os.path.join(OUTPUT_FOLDER, code + ".png")
-    )
 
-print("Selesai.")
+print("Selesai")
