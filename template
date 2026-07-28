@@ -1,14 +1,18 @@
 import re
-import numpy as np
 import matplotlib.pyplot as plt
 
+from shapely.geometry import Point, box
+from shapely.ops import unary_union
 
 # =====================================================
-# Ukuran benda
+# Ukuran template
 # =====================================================
 
 WIDTH = 300
 HEIGHT = 180
+
+# Resolusi lingkaran (semakin besar semakin halus)
+CIRCLE_RESOLUTION = 128
 
 
 # =====================================================
@@ -19,114 +23,87 @@ def parse_code(code):
 
     code = code.upper()
 
-    radius = re.findall(r'R(\d+)', code)
+    radius = list(map(int, re.findall(r"R(\d+)", code)))
 
     if len(radius) == 0:
-        return 0, 0
+        return []
 
-    if len(radius) == 1:
-        return int(radius[0]), 0
+    circles = []
 
-    return int(radius[0]), int(radius[1])
+    # R pertama -> sudut kiri bawah
+    circles.append((0, 0, radius[0]))
 
+    # R kedua -> sudut kiri atas
+    if len(radius) >= 2:
+        circles.append((0, HEIGHT, radius[1]))
 
-# =====================================================
-# Membuat busur cekung
-# =====================================================
-
-def arc_points(cx, cy, r, start_deg, end_deg, n=40):
-
-    angle = np.deg2rad(np.linspace(start_deg, end_deg, n))
-
-    x = cx + r*np.cos(angle)
-    y = cy + r*np.sin(angle)
-
-    return list(zip(x, y))
+    return circles
 
 
 # =====================================================
 # Gambar
 # =====================================================
 
-def draw_part(code):
+def draw_template(code):
 
-    rb, rt = parse_code(code)
+    # Persegi panjang
+    rectangle = box(0, 0, WIDTH, HEIGHT)
 
-    pts = []
+    # Semua lingkaran
+    circles = []
 
-    # -------------------------------------------------
-    # mulai dari kiri bawah
-    # -------------------------------------------------
+    for cx, cy, r in parse_code(code):
 
-    if rb > 0:
+        circle = Point(cx, cy).buffer(
+            r,
+            resolution=CIRCLE_RESOLUTION
+        )
 
-        pts.append((0, rb))
+        circles.append(circle)
 
-        pts.extend(
-            arc_points(
-                rb,
-                rb,
-                rb,
-                180,
-                270
-            )
+    # Boolean Difference
+    if circles:
+        holes = unary_union(circles)
+        result = rectangle.difference(holes)
+    else:
+        result = rectangle
+
+    # ==================================================
+    # Plot
+    # ==================================================
+
+    fig, ax = plt.subplots(figsize=(8,5))
+
+    if result.geom_type == "Polygon":
+
+        x, y = result.exterior.xy
+        ax.fill(
+            x,
+            y,
+            facecolor="white",
+            edgecolor="black",
+            linewidth=2
         )
 
     else:
-        pts.append((0, 0))
 
-    # bawah
-    pts.append((WIDTH, 0))
+        for poly in result.geoms:
 
-    # kanan
-    pts.append((WIDTH, HEIGHT))
-
-    # atas
-    if rt > 0:
-        pts.append((rt, HEIGHT))
-    else:
-        pts.append((0, HEIGHT))
-
-    # -------------------------------------------------
-    # notch atas kiri
-    # -------------------------------------------------
-
-    if rt > 0:
-
-        pts.extend(
-            arc_points(
-                rt,
-                HEIGHT-rt,
-                rt,
-                90,
-                180
+            x, y = poly.exterior.xy
+            ax.fill(
+                x,
+                y,
+                facecolor="white",
+                edgecolor="black",
+                linewidth=2
             )
-        )
 
-    # kiri
-    if rb > 0:
-        pts.append((0, rb))
-    else:
-        pts.append((0,0))
+    ax.set_aspect("equal")
 
-    pts = np.array(pts)
+    ax.set_xlim(-120, WIDTH + 30)
+    ax.set_ylim(-120, HEIGHT + 30)
 
-    plt.figure(figsize=(8,5))
-
-    plt.fill(
-        pts[:,0],
-        pts[:,1],
-        facecolor="white",
-        edgecolor="black",
-        linewidth=2
-    )
-
-    plt.gca().set_aspect("equal")
-
-    plt.xlim(-20, WIDTH+20)
-    plt.ylim(-20, HEIGHT+20)
-
-    plt.axis("off")
+    ax.axis("off")
 
     plt.title(code)
 
@@ -137,10 +114,12 @@ def draw_part(code):
 # TEST
 # =====================================================
 
-draw_part("AR50")
+examples = [
+    "AR50",
+    "AR50R30",
+    "AR80",
+    "AR100R40"
+]
 
-draw_part("AR50R30")
-
-draw_part("AR80")
-
-draw_part("AR100R40")
+for e in examples:
+    draw_template(e)
