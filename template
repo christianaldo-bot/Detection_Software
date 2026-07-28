@@ -1,209 +1,233 @@
-import os
 import re
-
+import numpy as np
 import matplotlib.pyplot as plt
-from shapely.geometry import box, Point
-from shapely.ops import unary_union
-from matplotlib.patches import Polygon
+from matplotlib.patches import Arc
 
+# ==========================================================
+# CONFIG
+# ==========================================================
 
-# ==========================
-# Ukuran template
-# ==========================
+WIDTH = 300      # panjang benda (mm)
+HEIGHT = 180     # tinggi benda (mm)
 
-WIDTH = 300
-HEIGHT = 200
+LINEWIDTH = 2
 
-OUTPUT = "output"
-
-os.makedirs(OUTPUT, exist_ok=True)
-
-
-
-# ==========================
-# Parsing kode
-# ==========================
+# ==========================================================
+# PARSER
+# ==========================================================
 
 def parse_code(code):
 
-    """
-    AR50
-        bottom = 50
-        top = None
+    code = code.upper()
 
-    AR50R30
-        bottom = 50
-        top = 30
-    """
+    if not code.startswith("A"):
+        raise ValueError("Kode harus diawali A")
 
-    radius = re.findall(r"R(\d+)", code)
+    radius = list(map(int, re.findall(r'R(\d+)', code)))
 
-    bottom = None
-    top = None
+    if len(radius) == 0:
+        bottom_r = 0
+        top_r = 0
 
+    elif len(radius) == 1:
+        bottom_r = radius[0]
+        top_r = 0
 
-    if len(radius) >= 1:
-        bottom = int(radius[0])
+    else:
+        bottom_r = radius[0]
+        top_r = radius[1]
 
-
-    if len(radius) >= 2:
-        top = int(radius[1])
+    return bottom_r, top_r
 
 
-    return bottom, top
+# ==========================================================
+# DRAW
+# ==========================================================
 
+def draw_part(code):
 
+    rb, rt = parse_code(code)
 
-# ==========================
-# Membuat bentuk
-# ==========================
+    fig, ax = plt.subplots(figsize=(10,6))
 
-def create_shape(code):
+    # -----------------------------
+    # garis bawah
+    # -----------------------------
+    ax.plot([-WIDTH/2+rb, WIDTH/2-rb],[0,0],'k',lw=LINEWIDTH)
 
-    bottom_r, top_r = parse_code(code)
+    # kiri
+    ax.plot([-WIDTH/2,-WIDTH/2],[rb,HEIGHT-rt],'k',lw=LINEWIDTH)
 
+    # kanan
+    ax.plot([WIDTH/2,WIDTH/2],[rb,HEIGHT-rt],'k',lw=LINEWIDTH)
 
-    # 1. Template persegi panjang
+    # atas
+    ax.plot([-WIDTH/2+rt,WIDTH/2-rt],[HEIGHT,HEIGHT],'k',lw=LINEWIDTH)
 
-    rectangle = box(
-        0,
-        0,
-        WIDTH,
-        HEIGHT
-    )
+    # =====================================================
+    # BOTTOM LEFT
+    # =====================================================
 
+    if rb>0:
 
-    cutters = []
-
-
-    # ======================
-    # Lingkaran bawah
-    # ======================
-
-    if bottom_r:
-
-        circle_bottom = (
-            Point(0, 0)
-            .buffer(
-                bottom_r,
-                resolution=100
-            )
+        arc = Arc(
+            (-WIDTH/2+rb,rb),
+            2*rb,
+            2*rb,
+            angle=0,
+            theta1=180,
+            theta2=270,
+            lw=LINEWIDTH
         )
 
-        cutters.append(circle_bottom)
-
-
-
-    # ======================
-    # Lingkaran atas
-    # ======================
-
-    if top_r:
-
-        circle_top = (
-            Point(0, HEIGHT)
-            .buffer(
-                top_r,
-                resolution=100
-            )
-        )
-
-        cutters.append(circle_top)
-
-
-
-    # ======================
-    # Potong
-    # ======================
-
-    if cutters:
-
-        cutting_shape = unary_union(cutters)
-
-        result = rectangle.difference(
-            cutting_shape
-        )
+        ax.add_patch(arc)
 
     else:
 
-        result = rectangle
+        ax.plot([-WIDTH/2,-WIDTH/2],[0,HEIGHT],'k')
 
+    # =====================================================
+    # BOTTOM RIGHT
+    # =====================================================
 
-    return result
+    if rb>0:
 
+        arc = Arc(
+            (WIDTH/2-rb,rb),
+            2*rb,
+            2*rb,
+            angle=0,
+            theta1=270,
+            theta2=360,
+            lw=LINEWIDTH
+        )
 
+        ax.add_patch(arc)
 
-# ==========================
-# Export gambar
-# ==========================
+    # =====================================================
+    # TOP LEFT
+    # =====================================================
 
-def draw(code):
+    if rt>0:
 
-    shape = create_shape(code)
+        arc = Arc(
+            (-WIDTH/2+rt,HEIGHT-rt),
+            2*rt,
+            2*rt,
+            angle=0,
+            theta1=90,
+            theta2=180,
+            lw=LINEWIDTH
+        )
 
+        ax.add_patch(arc)
 
-    fig, ax = plt.subplots(
-        figsize=(6,4)
+    # =====================================================
+    # TOP RIGHT
+    # =====================================================
+
+    if rt>0:
+
+        arc = Arc(
+            (WIDTH/2-rt,HEIGHT-rt),
+            2*rt,
+            2*rt,
+            angle=0,
+            theta1=0,
+            theta2=90,
+            lw=LINEWIDTH
+        )
+
+        ax.add_patch(arc)
+
+    # =====================================================
+    # DIMENSION
+    # =====================================================
+
+    # Panjang
+    y = -35
+
+    ax.annotate(
+        "",
+        xy=(-WIDTH/2,y),
+        xytext=(WIDTH/2,y),
+        arrowprops=dict(arrowstyle="<->")
     )
 
-
-    # ambil koordinat hasil
-
-    x, y = shape.exterior.xy
-
-
-    ax.fill(
-        x,
-        y,
-        facecolor="white",
-        edgecolor="black",
-        linewidth=2
+    ax.text(
+        0,
+        y-8,
+        f"{WIDTH} mm",
+        ha='center'
     )
 
+    # Tinggi
+    x = WIDTH/2+35
 
-    ax.set_xlim(
-        -20,
-        WIDTH+20
+    ax.annotate(
+        "",
+        xy=(x,0),
+        xytext=(x,HEIGHT),
+        arrowprops=dict(arrowstyle="<->")
     )
 
-    ax.set_ylim(
-        -20,
-        HEIGHT+20
+    ax.text(
+        x+8,
+        HEIGHT/2,
+        f"{HEIGHT} mm",
+        rotation=90,
+        va='center'
     )
+
+    # Radius bawah
+    if rb>0:
+
+        ax.plot(
+            [-WIDTH/2+rb,-WIDTH/2+rb+35],
+            [rb,rb+35],
+            'k--'
+        )
+
+        ax.text(
+            -WIDTH/2+rb+40,
+            rb+40,
+            f"R{rb}"
+        )
+
+    # Radius atas
+    if rt>0:
+
+        ax.plot(
+            [-WIDTH/2+rt,-WIDTH/2+rt+35],
+            [HEIGHT-rt,HEIGHT-rt-35],
+            'k--'
+        )
+
+        ax.text(
+            -WIDTH/2+rt+40,
+            HEIGHT-rt-45,
+            f"R{rt}"
+        )
+
+    # =====================================================
 
     ax.set_aspect("equal")
 
+    ax.set_xlim(-220,220)
+    ax.set_ylim(-60,220)
+
     ax.axis("off")
 
+    plt.title(code)
 
-    plt.savefig(
-        f"{OUTPUT}/{code}.png",
-        dpi=300,
-        bbox_inches="tight"
-    )
+    plt.savefig(code + ".png", dpi=300, bbox_inches="tight")
 
-
-    plt.close()
+    plt.show()
 
 
+# ==========================================================
+# EXAMPLE
+# ==========================================================
 
-# ==========================
-# Daftar kode
-# ==========================
-
-codes = [
-
-    "AR50",
-    "AR50R30",
-    "AR80",
-    "AR100R40"
-
-]
-
-
-for code in codes:
-
-    draw(code)
-
-
-print("Selesai")
+draw_part("AR50")
+# draw_part("AR50R30")
