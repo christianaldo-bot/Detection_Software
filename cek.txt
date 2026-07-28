@@ -1,0 +1,39 @@
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch
+import matplotlib.pyplot as plt
+import numpy as np
+
+w = 8
+h = 4
+r = 1
+
+theta = np.linspace(0, np.pi/2, 30)
+
+arc_x = w - r + r*np.cos(theta)
+arc_y = r*np.sin(theta)
+
+verts = [
+    (0,0),
+    (w-r,0),
+]
+
+verts.extend(zip(arc_x, arc_y))
+
+verts.extend([
+    (w,h),
+    (0,h),
+    (0,0)
+])
+
+codes = [Path.MOVETO] + [Path.LINETO]*(len(verts)-2) + [Path.CLOSEPOLY]
+
+path = Path(verts, codes)
+
+fig, ax = plt.subplots()
+ax.add_patch(PathPatch(path, facecolor="skyblue"))
+
+ax.set_aspect("equal")
+ax.set_xlim(-1,9)
+ax.set_ylim(-1,5)
+
+plt.show()
