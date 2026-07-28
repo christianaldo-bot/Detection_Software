@@ -1,131 +1,197 @@
+import os
+import re
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
 import numpy as np
-import re
-import os
 
 
-# ukuran template
+# =========================
+# Ukuran benda
+# =========================
+
 WIDTH = 300
 HEIGHT = 200
 
 OUTPUT = "output"
+
 os.makedirs(OUTPUT, exist_ok=True)
 
 
 
+# =========================
+# Parsing kode
+# =========================
+
 def parse_code(code):
-    """
-    AR50      -> bottom=50 top=0
-    AR50R30   -> bottom=50 top=30
-    """
 
-    r = re.findall(r"R(\d+)", code)
+    radius = re.findall(r"R(\d+)", code)
 
-    bottom = int(r[0]) if len(r) >= 1 else 0
-    top = int(r[1]) if len(r) >= 2 else 0
+    bottom = 0
+    top = 0
+
+    if len(radius) >= 1:
+        bottom = int(radius[0])
+
+    if len(radius) >= 2:
+        top = int(radius[1])
 
     return bottom, top
 
 
 
-def create_shape(bottom_r, top_r):
+# =========================
+# Membuat arc seperempat lingkaran
+# =========================
+
+def quarter_circle(cx, cy, r, start_deg, end_deg):
 
     points = []
-    commands = []
+
+    angles = np.linspace(
+        np.radians(start_deg),
+        np.radians(end_deg),
+        30
+    )
+
+    for a in angles:
+
+        x = cx + r*np.cos(a)
+        y = cy + r*np.sin(a)
+
+        points.append((x,y))
+
+    return points
 
 
-    # mulai dari bawah kiri setelah radius
-    points.append((bottom_r, 0))
-    commands.append(Path.MOVETO)
+
+# =========================
+# Membuat bentuk
+# =========================
+
+def create_shape(bottom_r, top_r):
+
+    vertices = []
+    codes = []
 
 
-    # bawah
-    points.append((WIDTH,0))
-    commands.append(Path.LINETO)
+    # mulai dari bawah kanan
+    vertices.append((WIDTH,0))
+    codes.append(Path.MOVETO)
 
 
-    # kanan
-    points.append((WIDTH,HEIGHT))
-    commands.append(Path.LINETO)
+    # menuju kanan atas
+    vertices.append((WIDTH,HEIGHT))
+    codes.append(Path.LINETO)
 
 
-    # atas menuju radius atas
+    # =====================
+    # Radius kiri atas
+    # =====================
+
     if top_r > 0:
 
-        points.append((top_r,HEIGHT))
-        commands.append(Path.LINETO)
+        # garis atas menuju titik awal arc
+        vertices.append((top_r,HEIGHT))
+        codes.append(Path.LINETO)
 
-        # arc kiri atas (cekung)
-        cx = top_r
-        cy = HEIGHT-top_r
 
-        for angle in np.linspace(90,180,30):
+        # cekungan masuk ke dalam
+        arc = quarter_circle(
+            top_r,
+            HEIGHT-top_r,
+            top_r,
+            90,
+            180
+        )
 
-            x = cx + top_r*np.cos(np.radians(angle))
-            y = cy + top_r*np.sin(np.radians(angle))
-
-            points.append((x,y))
-            commands.append(Path.LINETO)
+        for p in arc:
+            vertices.append(p)
+            codes.append(Path.LINETO)
 
     else:
 
-        points.append((0,HEIGHT))
-        commands.append(Path.LINETO)
+        vertices.append((0,HEIGHT))
+        codes.append(Path.LINETO)
 
 
 
-    # turun sisi kiri
+    # =====================
+    # Sisi kiri tengah
+    # =====================
+
     if top_r > 0:
-        start_y = HEIGHT-top_r
+
+        top_end = HEIGHT-top_r
+
     else:
-        start_y = HEIGHT
+
+        top_end = HEIGHT
 
 
     if bottom_r > 0:
 
-        points.append((0,bottom_r))
-        commands.append(Path.LINETO)
+        bottom_start = bottom_r
+
+    else:
+
+        bottom_start = 0
 
 
-        # arc kiri bawah (cekung)
+    vertices.append((0,bottom_start))
+    codes.append(Path.LINETO)
 
-        cx = bottom_r
-        cy = bottom_r
 
-        for angle in np.linspace(180,270,30):
 
-            x = cx + bottom_r*np.cos(np.radians(angle))
-            y = cy + bottom_r*np.sin(np.radians(angle))
+    # =====================
+    # Radius kiri bawah
+    # =====================
 
-            points.append((x,y))
-            commands.append(Path.LINETO)
+    if bottom_r > 0:
+
+        arc = quarter_circle(
+            bottom_r,
+            bottom_r,
+            bottom_r,
+            180,
+            270
+        )
+
+
+        for p in arc:
+
+            vertices.append(p)
+            codes.append(Path.LINETO)
 
 
     else:
 
-        points.append((0,0))
-        commands.append(Path.LINETO)
+        vertices.append((0,0))
+        codes.append(Path.LINETO)
 
 
 
-    points.append((bottom_r,0))
-    commands.append(Path.CLOSEPOLY)
+    # kembali ke awal
+
+    vertices.append((WIDTH,0))
+    codes.append(Path.CLOSEPOLY)
 
 
-    return Path(points, commands)
+    return Path(vertices,codes)
 
 
 
+# =========================
+# Menggambar
+# =========================
 
 def draw(code):
 
-    bottom, top = parse_code(code)
+    bottom_r, top_r = parse_code(code)
 
     path = create_shape(
-        bottom,
-        top
+        bottom_r,
+        top_r
     )
 
 
@@ -145,10 +211,18 @@ def draw(code):
     ax.add_patch(patch)
 
 
-    ax.set_xlim(-20,WIDTH+20)
-    ax.set_ylim(-20,HEIGHT+20)
+    ax.set_xlim(
+        -20,
+        WIDTH+20
+    )
+
+    ax.set_ylim(
+        -20,
+        HEIGHT+20
+    )
 
     ax.set_aspect("equal")
+
     ax.axis("off")
 
 
@@ -162,7 +236,10 @@ def draw(code):
 
 
 
-# contoh banyak kode
+# =========================
+# Input kode
+# =========================
+
 codes = [
     "AR50",
     "AR50R30",
@@ -171,8 +248,9 @@ codes = [
 ]
 
 
-for c in codes:
-    draw(c)
+for code in codes:
+
+    draw(code)
 
 
-print("Selesai")
+print("Selesai membuat gambar")
