@@ -1,14 +1,15 @@
 import os
 import re
+
 import matplotlib.pyplot as plt
-from matplotlib.path import Path
-from matplotlib.patches import PathPatch
-import numpy as np
+from shapely.geometry import box, Point
+from shapely.ops import unary_union
+from matplotlib.patches import Polygon
 
 
-# =========================
-# Ukuran benda
-# =========================
+# ==========================
+# Ukuran template
+# ==========================
 
 WIDTH = 300
 HEIGHT = 200
@@ -19,180 +20,126 @@ os.makedirs(OUTPUT, exist_ok=True)
 
 
 
-# =========================
+# ==========================
 # Parsing kode
-# =========================
+# ==========================
 
 def parse_code(code):
 
+    """
+    AR50
+        bottom = 50
+        top = None
+
+    AR50R30
+        bottom = 50
+        top = 30
+    """
+
     radius = re.findall(r"R(\d+)", code)
 
-    bottom = 0
-    top = 0
+    bottom = None
+    top = None
+
 
     if len(radius) >= 1:
         bottom = int(radius[0])
 
+
     if len(radius) >= 2:
         top = int(radius[1])
+
 
     return bottom, top
 
 
 
-# =========================
-# Membuat arc seperempat lingkaran
-# =========================
-
-def quarter_circle(cx, cy, r, start_deg, end_deg):
-
-    points = []
-
-    angles = np.linspace(
-        np.radians(start_deg),
-        np.radians(end_deg),
-        30
-    )
-
-    for a in angles:
-
-        x = cx + r*np.cos(a)
-        y = cy + r*np.sin(a)
-
-        points.append((x,y))
-
-    return points
-
-
-
-# =========================
+# ==========================
 # Membuat bentuk
-# =========================
+# ==========================
 
-def create_shape(bottom_r, top_r):
-
-    vertices = []
-    codes = []
-
-
-    # mulai dari bawah kanan
-    vertices.append((WIDTH,0))
-    codes.append(Path.MOVETO)
-
-
-    # menuju kanan atas
-    vertices.append((WIDTH,HEIGHT))
-    codes.append(Path.LINETO)
-
-
-    # =====================
-    # Radius kiri atas
-    # =====================
-
-    if top_r > 0:
-
-        # garis atas menuju titik awal arc
-        vertices.append((top_r,HEIGHT))
-        codes.append(Path.LINETO)
-
-
-        # cekungan masuk ke dalam
-        arc = quarter_circle(
-            top_r,
-            HEIGHT-top_r,
-            top_r,
-            90,
-            180
-        )
-
-        for p in arc:
-            vertices.append(p)
-            codes.append(Path.LINETO)
-
-    else:
-
-        vertices.append((0,HEIGHT))
-        codes.append(Path.LINETO)
-
-
-
-    # =====================
-    # Sisi kiri tengah
-    # =====================
-
-    if top_r > 0:
-
-        top_end = HEIGHT-top_r
-
-    else:
-
-        top_end = HEIGHT
-
-
-    if bottom_r > 0:
-
-        bottom_start = bottom_r
-
-    else:
-
-        bottom_start = 0
-
-
-    vertices.append((0,bottom_start))
-    codes.append(Path.LINETO)
-
-
-
-    # =====================
-    # Radius kiri bawah
-    # =====================
-
-    if bottom_r > 0:
-
-        arc = quarter_circle(
-            bottom_r,
-            bottom_r,
-            bottom_r,
-            180,
-            270
-        )
-
-
-        for p in arc:
-
-            vertices.append(p)
-            codes.append(Path.LINETO)
-
-
-    else:
-
-        vertices.append((0,0))
-        codes.append(Path.LINETO)
-
-
-
-    # kembali ke awal
-
-    vertices.append((WIDTH,0))
-    codes.append(Path.CLOSEPOLY)
-
-
-    return Path(vertices,codes)
-
-
-
-# =========================
-# Menggambar
-# =========================
-
-def draw(code):
+def create_shape(code):
 
     bottom_r, top_r = parse_code(code)
 
-    path = create_shape(
-        bottom_r,
-        top_r
+
+    # 1. Template persegi panjang
+
+    rectangle = box(
+        0,
+        0,
+        WIDTH,
+        HEIGHT
     )
+
+
+    cutters = []
+
+
+    # ======================
+    # Lingkaran bawah
+    # ======================
+
+    if bottom_r:
+
+        circle_bottom = (
+            Point(0, 0)
+            .buffer(
+                bottom_r,
+                resolution=100
+            )
+        )
+
+        cutters.append(circle_bottom)
+
+
+
+    # ======================
+    # Lingkaran atas
+    # ======================
+
+    if top_r:
+
+        circle_top = (
+            Point(0, HEIGHT)
+            .buffer(
+                top_r,
+                resolution=100
+            )
+        )
+
+        cutters.append(circle_top)
+
+
+
+    # ======================
+    # Potong
+    # ======================
+
+    if cutters:
+
+        cutting_shape = unary_union(cutters)
+
+        result = rectangle.difference(
+            cutting_shape
+        )
+
+    else:
+
+        result = rectangle
+
+
+    return result
+
+
+
+# ==========================
+# Export gambar
+# ==========================
+
+def draw(code):
+
+    shape = create_shape(code)
 
 
     fig, ax = plt.subplots(
@@ -200,15 +147,18 @@ def draw(code):
     )
 
 
-    patch = PathPatch(
-        path,
+    # ambil koordinat hasil
+
+    x, y = shape.exterior.xy
+
+
+    ax.fill(
+        x,
+        y,
         facecolor="white",
         edgecolor="black",
         linewidth=2
     )
-
-
-    ax.add_patch(patch)
 
 
     ax.set_xlim(
@@ -232,19 +182,22 @@ def draw(code):
         bbox_inches="tight"
     )
 
+
     plt.close()
 
 
 
-# =========================
-# Input kode
-# =========================
+# ==========================
+# Daftar kode
+# ==========================
 
 codes = [
+
     "AR50",
     "AR50R30",
     "AR80",
     "AR100R40"
+
 ]
 
 
@@ -253,4 +206,4 @@ for code in codes:
     draw(code)
 
 
-print("Selesai membuat gambar")
+print("Selesai")
